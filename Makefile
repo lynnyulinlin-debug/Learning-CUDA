@@ -21,51 +21,51 @@ EXTRA_LIBS      :=
 ifeq ($(PLATFORM),nvidia)
     CC                  := nvcc
     TEST_OBJ            := tester/tester_nv.o
-        PLATFORM_DEFINE := -DPLATFORM_NVIDIA
+	PLATFORM_DEFINE := -DPLATFORM_NVIDIA
 # CUDA_HOME and CUDA_LIBDIR are only used for nvidia platform
-        CUDA_HOME ?= /usr/local/cuda
-        CUDA_LIBDIR ?= $(CUDA_HOME)/lib64
-        EXTRA_LIBS := -L$(CUDA_HOME)/lib64 -lcudart -Xlinker -rpath -Xlinker $(CUDA_HOME)/lib64
+	CUDA_HOME ?= /usr/local/cuda
+	CUDA_LIBDIR ?= $(CUDA_HOME)/lib64
+	EXTRA_LIBS := -L$(CUDA_HOME)/lib64 -lcudart -Xlinker -rpath -Xlinker $(CUDA_HOME)/lib64
 else ifeq ($(PLATFORM),iluvatar)
 #    CC                 := clang++
 #       CFLAGS          := -std=c++17 -O3
 #       TEST_OBJ        := tester/tester_iluvatar.o
 #       PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
 #       EXTRA_LIBS              := -lcudart -I/usr/local/corex/include -L/usr/local/corex/lib64 -fPIC
-        COREX_ROOT ?= /usr/local/corex-4.3.0
-        ILUVATAR_ARCH ?= ivcore10
+	COREX_ROOT ?= /usr/local/corex
+	ILUVATAR_ARCH ?= ivcore10
 
-        CC := $(COREX_ROOT)/bin/clang++
-        TEST_OBJ := tester/tester_iluvatar.o
-        PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
-        INC := -I$(COREX_ROOT)/include
+	CC := $(COREX_ROOT)/bin/clang++
+	TEST_OBJ := tester/tester_iluvatar.o
+	PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
+	INC := -I$(COREX_ROOT)/include
 
 
-# KEY: -x ivcore to make clang++ generate device core accoring to ivcore
-        # fat device image
-        ILUVATAR_ARCHES ?= ivcore10 ivcore11
-        IVCORE_ARCH_FLAGS := $(foreach a,$(ILUVATAR_ARCHES),--cuda-gpu-arch=$(a))
-        # compile .cu
-        IVCORE_CFLAGS := -std=c++17 -O3 -fPIC \
-                -x ivcore \
-                $(IVCORE_ARCH_FLAGS) \
-                --cuda-path=$(COREX_ROOT) \
-                $(INC) $(PLATFORM_DEFINE)
-        IVCORE_LDFLAGS := $(IVCORE_ARCH_FLAGS) --cuda-path=$(COREX_ROOT)
+# KEY: to make clang++ generate device core accoring to ivcore
+	# fat device image
+	ILUVATAR_ARCHES ?= ivcore10 ivcore11
+	IVCORE_ARCH_FLAGS := $(foreach a,$(ILUVATAR_ARCHES),--cuda-gpu-arch=$(a))
+	# compile .cu
+	IVCORE_CFLAGS := -std=c++17 -O3 -fPIC \
+	        \
+	        $(IVCORE_ARCH_FLAGS) \
+	        --cuda-path=$(COREX_ROOT) \
+	        $(INC) $(PLATFORM_DEFINE)
+	IVCORE_LDFLAGS := --cuda-path=$(COREX_ROOT)
 # for link use
-        EXTRA_LIBS := -L$(COREX_ROOT)/lib64 -lcudart -Wl,-rpath,$(COREX_ROOT)/lib64
+	EXTRA_LIBS := -L$(COREX_ROOT)/lib64 -lcudart -Wl,-rpath,$(COREX_ROOT)/lib64
 else ifeq ($(PLATFORM),moore)
     CC                  := mcc
-        CFLAGS          := -std=c++11 -O3
+	CFLAGS          := -std=c++11 -O3
     TEST_OBJ            := tester/tester_moore.o
-        STUDENT_SUFFIX  := mu
-        PLATFORM_DEFINE := -DPLATFORM_MOORE
-        EXTRA_LIBS              := -I/usr/local/musa/include -L/usr/lib/gcc/x86_64-linux-gnu/11/ -L/usr/local/musa/lib -lmusart
+	STUDENT_SUFFIX  := mu
+	PLATFORM_DEFINE := -DPLATFORM_MOORE
+	EXTRA_LIBS              := -I/usr/local/musa/include -L/usr/lib/gcc/x86_64-linux-gnu/11/ -L/usr/local/musa/lib -lmusart
 else ifeq ($(PLATFORM),metax)
     CC                  := mxcc
     TEST_OBJ            := tester/tester_metax.o
-        STUDENT_SUFFIX  := maca
-        PLATFORM_DEFINE := -DPLATFORM_METAX
+	STUDENT_SUFFIX  := maca
+	PLATFORM_DEFINE := -DPLATFORM_METAX
 else
     $(error Unsupported PLATFORM '$(PLATFORM)' (expected: nvidia, iluvatar, moore, metax))
 endif
@@ -101,25 +101,25 @@ build: $(TARGET)
 
 # Run target: Execute tests (supports `VERBOSE=true` for verbose output)
 run: $(TARGET)
-        @echo "=== Running tests (output from $(STUDENT_OBJ)) ==="
-        @# Show verbose mode status (friendly for users)
-        @if [ -n "$(VERBOSE_ARG)" ]; then \
-            echo "=== Verbose mode: Enabled (using '$(TEST_VERBOSE_FLAG)') ==="; \
-        else \
-            echo "=== Verbose mode: Disabled ==="; \
-        fi
-        ./$(TARGET) $(VERBOSE_ARG)
+	@echo "=== Running tests (output from $(STUDENT_OBJ)) ==="
+	@# Show verbose mode status (friendly for users)
+	@if [ -n "$(VERBOSE_ARG)" ]; then \
+	    echo "=== Verbose mode: Enabled (using '$(TEST_VERBOSE_FLAG)') ==="; \
+	else \
+	    echo "=== Verbose mode: Disabled ==="; \
+	fi
+	./$(TARGET) $(VERBOSE_ARG)
 
 # Clean target: Delete temporary files (executable + src object)
 clean:
-        @echo "=== Cleaning temporary files ==="
-        rm -f $(TARGET) $(STUDENT_OBJ)
+	@echo "=== Cleaning temporary files ==="
+	rm -f $(TARGET) $(STUDENT_OBJ)
 #--------------------------------------
 # Prebuilt tester objects(no source, do Not try implicit .cu->.o rules
 #---------------------------------------
 
 tester/tester_iluvatar.o tester/tester_nv.o tester/tester_moore.o tester/tester_metax.o:
-        @:
+	@:
 
 
 # -------------------------------
@@ -127,12 +127,12 @@ tester/tester_iluvatar.o tester/tester_nv.o tester/tester_moore.o tester/tester_
 # -------------------------------
 # Generate executable: Link kernel code (kernels.o) with test logic (tester.o)
 $(TARGET): $(STUDENT_OBJ) $(TEST_OBJ)
-        @echo "=== Linking executable (student code + test logic) ==="
+	@echo "=== Linking executable (student code + test logic) ==="
 #       $(CC) $(CFLAGS) $(PLATFORM_DEFINE) -o $@ $^ $(EXTRA_LIBS)
 ifeq ($(PLATFORM),iluvatar)
-        $(CC) -std=c++17 -O3 $(IVCORE_LDFLAGS) -o $@ $^ $(EXTRA_LIBS)
+	$(CC) -std=c++17 -O3 $(IVCORE_LDFLAGS) -o $@ $^ $(EXTRA_LIBS)
 else
-        $(CC) $(CFLAGS) $(PLATFORM_DEFINE) -o $@ $^ $(EXTRA_LIBS)
+	$(CC) $(CFLAGS) $(PLATFORM_DEFINE) -o $@ $^ $(EXTRA_LIBS)
 endif
 
 #--------------------------------------
@@ -141,10 +141,10 @@ endif
 
 # Generate src object: Compile kernels.cu (triggers template instantiation)
 $(STUDENT_OBJ): $(STUDENT_SRC)
-        @echo "=== Compiling student code ($(STUDENT_SRC)) ==="
+	@echo "=== Compiling student code ($(STUDENT_SRC)) ==="
 #       $(CC) $(CFLAGS) $(PLATFORM_DEFINE) -c $< -o $@
 ifeq ($(PLATFORM),iluvatar)
-        $(CC) $(IVCORE_CFLAGS) -c $< -o $@
+	$(CC) $(IVCORE_CFLAGS) -c $< -o $@
 else
-        $(CC) $(CFLAGS) $(PLATFORM_DEFINE) -c $< -o $@
+	$(CC) $(CFLAGS) $(PLATFORM_DEFINE) -c $< -o $@
 endif
