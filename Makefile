@@ -22,6 +22,10 @@ ifeq ($(PLATFORM),nvidia)
     CC          	:= nvcc
     TEST_OBJ    	:= tester/tester_nv.o
 	PLATFORM_DEFINE := -DPLATFORM_NVIDIA
+# CUDA_HOME and CUDA_LIBDIR are only used for nvidia platform
+	CUDA_HOME ?= /usr/local/cuda
+	CUDA_LIBDIR ?= $(CUDA_HOME)/lib64
+	EXTRA_LIBS := -L$(CUDA_HOME)/lib64 -lcudart -Xlinker -rpath -Xlinker $(CUDA_HOME)/lib64
 else ifeq ($(PLATFORM),iluvatar)
     CC          	:= clang++
 	CFLAGS          := -std=c++17 -O3
