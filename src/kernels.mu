@@ -1,7 +1,67 @@
 #include <vector>
 #include <musa_fp16.h>
+#include <musa_runtime.h>
+#include <musa_fp16.h>
+#include <type_traits>
+
+#include <cmath>
+#include <limits>
+#include <algorithm>
+#include <cstdlib>
+#include <iostream>
 
 #include "../tester/utils.h"
+
+// ============================================================================
+// runtime mapping (MUSA) 便于定位问题。
+// ============================================================================
+#define DEV_MALLOC        mudaMalloc
+#define DEV_FREE          mudaFree
+#define DEV_MEMCPY        mudaMemcpy
+#define DEV_MEMSET        mudaMemset
+#define DEV_DEVICE_SYNC   mudaDeviceSynchronize
+#define DEV_GET_LAST_ERR  mudaGetLastError
+#define DEV_ERR_STR       mudaGetErrorString
+
+#define MEMCPY_H2D        mudaMemcpyHostToDevice
+#define MEMCPY_D2H        mudaMemcpyDeviceToHost
+#define MEMCPY_D2D        mudaMemcpyDeviceToDevice
+
+
+// kernel launch check
+#define KERNEL_LAUNCH_CHECK()                                         \
+  do {                                                                \
+    auto e = DEV_GET_LAST_ERR();                                      \
+    if (e != cudaSuccess) {                                           \
+      std::cerr << "Kernel launch error: " << DEV_ERR_STR(e) << "\n"; \
+      exit(EXIT_FAILURE);                                             \
+    }                                                                 \
+    RUNTIME_CHECK(DEV_DEVICE_SYNC());                                 \
+  } while (0)
+
+// ============================================================================
+// Device helpers
+// 注意：C++11 不支持 if constexpr，使用模板特化替代
+// ============================================================================
+template <typename T>
+__device__ __forceinline__ float to_float_dev(T x) {
+  return (float)x;
+}
+
+template <>
+__device__ __forceinline__ float to_float_dev<__half>(__half x) {
+  return __half2float(x);
+}
+
+template <typename T>
+__device__ __forceinline__ T from_float_dev(float x) {
+  return (T)x;
+}
+
+template <>
+__device__ __forceinline__ __half from_float_dev<__half>(float x) {
+  return __float2half(x);
+}
 
 /**
  * @brief Computes the trace of a matrix.
@@ -17,10 +77,65 @@
  * @param cols Number of columns in the matrix.
  * @return The trace (sum of diagonal values) of the matrix.
  */
+
+// ============================================================================
+// 1） trace kernel
+// ============================================================================
+template <typename T>
+__global__ void trace_kernel(const T* __restrict__ in, size_t rows, size_t cols, T* __restrict__ out) {
+  const size_t n = (rows < cols) ? rows : cols;
+  size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  T local = (T)0;
+  const size_t stride = (size_t)gridDim.x * blockDim.x;
+  for (size_t i = tid; i < n; i += stride) {
+    local = local + in[i * cols + i];
+  }
+
+  extern __shared__ unsigned char smem_raw[];
+  T* smem = reinterpret_cast<T*>(smem_raw);
+  smem[threadIdx.x] = local;
+  __syncthreads();
+
+  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+    if (threadIdx.x < s) smem[threadIdx.x] = smem[threadIdx.x] + smem[threadIdx.x + s];
+    __syncthreads();
+  }
+
+  if (threadIdx.x == 0) {
+    atomicAdd(out, smem[0]);
+  }
+}
+
+
 template <typename T>
 T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
   // TODO: Implement the trace function
-  return T(-1);
+  //return T(-1);
+    const size_t n_elem = rows * cols;
+  if (n_elem == 0) return (T)0;
+
+  T *d_in = nullptr, *d_out = nullptr;
+  RUNTIME_CHECK(DEV_MALLOC(&d_in, n_elem * sizeof(T)));
+  RUNTIME_CHECK(DEV_MALLOC(&d_out, sizeof(T)));
+
+  RUNTIME_CHECK(DEV_MEMCPY(d_in, h_input.data(), n_elem * sizeof(T), MEMCPY_H2D));
+  RUNTIME_CHECK(DEV_MEMSET(d_out, 0, sizeof(T)));
+
+  const int threads = 256;
+  const size_t n_diag = (rows < cols) ? rows : cols;
+  int blocks = (int)((n_diag + (size_t)threads - 1) / (size_t)threads);
+  blocks = std::max(std::min(blocks, 120), 1);
+
+  const size_t shmem = (size_t)threads * sizeof(T);
+  trace_kernel<T><<<blocks, threads, shmem>>>(d_in, rows, cols, d_out);
+  KERNEL_LAUNCH_CHECK();
+
+  T h_out;
+  RUNTIME_CHECK(DEV_MEMCPY(&h_out, d_out, sizeof(T), MEMCPY_D2H));
+
+  RUNTIME_CHECK(DEV_FREE(d_in));
+  RUNTIME_CHECK(DEV_FREE(d_out));
+  return h_out;
 }
 
 /**
@@ -39,11 +154,141 @@ T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
  * @param[in] head_dim Dimension size of each attention head
  * @param[in] is_causal Whether to apply causal masking
  */
+
+ // ============================================================================
+// 2） flashAttention kernel
+// ============================================================================
+template <typename T>
+__global__ void flashattn_kernel(const T* __restrict__ q,
+                                 const T* __restrict__ k,
+                                 const T* __restrict__ v,
+                                 T* __restrict__ o,
+                                 int B, int Tt, int Ss, int QH, int KVH, int D, 
+                                 bool causal) {
+  const int b  = (int)blockIdx.x;
+  const int t  = (int)blockIdx.y;
+  const int qh = (int)blockIdx.z;
+  const int d  = (int)threadIdx.x;
+
+  if (b >= B || t >= Tt || qh >= QH || d >= D) return;
+
+  int kvh = 0;
+  if (KVH > 0 && QH == KVH) kvh = qh;
+  else if (KVH > 0 && (QH % KVH == 0)) kvh = qh / (QH / KVH);
+  else if (KVH > 0) kvh = qh % KVH;
+
+  const float scale = 1.0f / sqrtf((float)D);
+
+  const size_t q_base = ((size_t)b * (size_t)Tt * (size_t)QH * (size_t)D)
+                      + ((size_t)t * (size_t)QH * (size_t)D)
+                      + ((size_t)qh * (size_t)D);
+  const size_t o_base = q_base;
+
+  __shared__ float sh_max;
+  __shared__ float sh_p;
+  __shared__ float sh_sum;
+
+  // Pass 1: compute max score
+  if (d == 0) {
+    float m = -INFINITY;
+    for (int s = 0; s < Ss; ++s) {
+      if (causal && s > t) continue;
+
+      const size_t k_base = ((size_t)b * (size_t)Ss * (size_t)KVH * (size_t)D)
+                          + ((size_t)s * (size_t)KVH * (size_t)D)
+                          + ((size_t)kvh * (size_t)D);
+
+      float dot = 0.0f;
+      for (int dd = 0; dd < D; ++dd) {
+        dot = fmaf(to_float_dev(q[q_base + (size_t)dd]),
+                   to_float_dev(k[k_base + (size_t)dd]),
+                   dot);
+      }
+      const float score = dot * scale;
+      m = fmaxf(m, score);
+    }
+    sh_max = m;
+  }
+  __syncthreads();
+
+  // Pass 2: compute sum and output
+  const float m = sh_max;
+  float out = 0.0f;
+  float sum = 0.0f;
+
+  for (int s = 0; s < Ss; ++s) {
+    if (causal && s > t) continue;
+
+    const size_t k_base = ((size_t)b * (size_t)Ss * (size_t)KVH * (size_t)D)
+                        + ((size_t)s * (size_t)KVH * (size_t)D)
+                        + ((size_t)kvh * (size_t)D);
+    const size_t v_base = k_base;
+
+    if (d == 0) {
+      float dot = 0.0f;
+      for (int dd = 0; dd < D; ++dd) {
+        dot = fmaf(to_float_dev(q[q_base + (size_t)dd]),
+                   to_float_dev(k[k_base + (size_t)dd]),
+                   dot);
+      }
+      const float score = dot * scale;
+      sh_p = expf(score - m);
+    }
+    __syncthreads();
+
+    const float p = sh_p;
+    sum += p;
+    out += p * to_float_dev(v[v_base + (size_t)d]);
+
+    __syncthreads();
+  }
+
+  if (d == 0) sh_sum = sum;
+  __syncthreads();
+
+  const float denom = sh_sum;
+  if (denom > 0.0f) out /= denom;
+
+  o[o_base + (size_t)d] = from_float_dev<T>(out);
+}
+
 template <typename T>
 void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,
                     const std::vector<T>& h_v, std::vector<T>& h_o,
                     int batch_size, int target_seq_len, int src_seq_len, 
-                    int query_heads, int kv_heads, int head_dim, bool is_causal) {       
+                    int query_heads, int kv_heads, int head_dim, bool is_causal) {      
+  const int B = batch_size, Tt = target_seq_len, Ss = src_seq_len;
+  const int QH = query_heads, KVH = kv_heads, D = head_dim;
+
+  const size_t q_sz = (size_t)B * (size_t)Tt * (size_t)QH * (size_t)D;
+  const size_t k_sz = (size_t)B * (size_t)Ss * (size_t)KVH * (size_t)D;
+  const size_t v_sz = (size_t)B * (size_t)Ss * (size_t)KVH * (size_t)D;
+  const size_t o_sz = (size_t)B * (size_t)Tt * (size_t)QH * (size_t)D;
+
+  h_o.resize(o_sz);
+
+  T *d_q=nullptr, *d_k=nullptr, *d_v=nullptr, *d_o=nullptr;
+  RUNTIME_CHECK(DEV_MALLOC(&d_q, q_sz * sizeof(T)));
+  RUNTIME_CHECK(DEV_MALLOC(&d_k, k_sz * sizeof(T)));
+  RUNTIME_CHECK(DEV_MALLOC(&d_v, v_sz * sizeof(T)));
+  RUNTIME_CHECK(DEV_MALLOC(&d_o, o_sz * sizeof(T)));
+
+  RUNTIME_CHECK(DEV_MEMCPY(d_q, h_q.data(), q_sz * sizeof(T), MEMCPY_H2D));
+  RUNTIME_CHECK(DEV_MEMCPY(d_k, h_k.data(), k_sz * sizeof(T), MEMCPY_H2D));
+  RUNTIME_CHECK(DEV_MEMCPY(d_v, h_v.data(), v_sz * sizeof(T), MEMCPY_H2D));
+
+  dim3 grid((unsigned)B, (unsigned)Tt, (unsigned)QH);
+  dim3 block((unsigned)D, 1, 1);
+
+  flashattn_kernel<T><<<grid, block>>>(d_q, d_k, d_v, d_o, B, Tt, Ss, QH, KVH, D, is_causal);
+  RUNTIME_CHECK(DEV_DEVICE_SYNC());
+
+  RUNTIME_CHECK(DEV_MEMCPY(h_o.data(), d_o, o_sz * sizeof(T), MEMCPY_D2H));
+
+  RUNTIME_CHECK(DEV_FREE(d_q));
+  RUNTIME_CHECK(DEV_FREE(d_k));
+  RUNTIME_CHECK(DEV_FREE(d_v));
+  RUNTIME_CHECK(DEV_FREE(d_o)); 
 }
 
 // *********************************************************************

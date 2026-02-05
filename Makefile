@@ -27,14 +27,8 @@ ifeq ($(PLATFORM),nvidia)
 	CUDA_LIBDIR ?= $(CUDA_HOME)/lib64
 	EXTRA_LIBS := -L$(CUDA_HOME)/lib64 -lcudart -Xlinker -rpath -Xlinker $(CUDA_HOME)/lib64
 else ifeq ($(PLATFORM),iluvatar)
-#    CC                 := clang++
-#       CFLAGS          := -std=c++17 -O3
-#       TEST_OBJ        := tester/tester_iluvatar.o
-#       PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
-#       EXTRA_LIBS              := -lcudart -I/usr/local/corex/include -L/usr/local/corex/lib64 -fPIC
 	COREX_ROOT ?= /usr/local/corex
 	ILUVATAR_ARCH ?= ivcore10
-
 	CC := $(COREX_ROOT)/bin/clang++
 	TEST_OBJ := tester/tester_iluvatar.o
 	PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
@@ -55,12 +49,18 @@ else ifeq ($(PLATFORM),iluvatar)
 # for link use
 	EXTRA_LIBS := -L$(COREX_ROOT)/lib64 -lcudart -Wl,-rpath,$(COREX_ROOT)/lib64
 else ifeq ($(PLATFORM),moore)
-    CC                  := mcc
+	MUSA_ROOT       ?= /usr/local/musa
+    CC              := mcc
 	CFLAGS          := -std=c++11 -O3
-    TEST_OBJ            := tester/tester_moore.o
+    TEST_OBJ        := tester/tester_moore.o
 	STUDENT_SUFFIX  := mu
 	PLATFORM_DEFINE := -DPLATFORM_MOORE
-	EXTRA_LIBS              := -I/usr/local/musa/include -L/usr/lib/gcc/x86_64-linux-gnu/11/ -L/usr/local/musa/lib -lmusart
+#	EXTRA_LIBS              := -I/usr/local/musa/include -L/usr/lib/gcc/x86_64-linux-gnu/11/ -L/usr/local/musa/lib -lmusart
+# 对齐 NVIDIA 风格：include 路径、库路径、运行时库、rpath
+    EXTRA_LIBS      := -I$(MUSA_ROOT)/include \
+                       -L$(MUSA_ROOT)/lib -lmusart \
+                       -L/usr/lib/gcc/x86_64-linux-gnu/11/ \
+                       -Xlinker -rpath -Xlinker $(MUSA_ROOT)/lib
 else ifeq ($(PLATFORM),metax)
     CC                  := mxcc
     TEST_OBJ            := tester/tester_metax.o
