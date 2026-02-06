@@ -56,23 +56,23 @@ extern "C" RUNTIME_ERR_TYPE cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int
 
 #elif defined(PLATFORM_METAX)
 #include <mcr/mc_runtime.h>
-#include <mcr/mc_fp16.h>
+#include <common/maca_fp16.h>
 #define RUNTIME_ERR_TYPE mcError_t
 #define RUNTIME_SUCCESS_CODE mcSuccess
 #define RUNTIME_GET_ERROR_STR mcGetErrorString
-#define RUNTIME_GET_LAST_ERR  mcdaGetLastError
+#define RUNTIME_GET_LAST_ERR  mcGetLastError
 
-#define RUNTIME_MALLOC        mcdaMalloc
-#define RUNTIME_FREE          mcdaFree
-#define RUNTIME_MEMCPY        mcdaMemcpy
-#define RUNTIME_MEMSET        mcdaMemset
+#define RUNTIME_MALLOC        mcMalloc
+#define RUNTIME_FREE          mcFree
+#define RUNTIME_MEMCPY        mcMemcpy
+#define RUNTIME_MEMSET        mcMemset
 
-#define RUNTIME_DEVICE_SYNC   mcdaDeviceSynchronize
+#define RUNTIME_DEVICE_SYNC   mcDeviceSynchronize
 
-#define MEMCPY_H2D        mcdaMemcpyHostToDevice
-#define MEMCPY_D2H        mcdaMemcpyDeviceToHost
-//#define MEMCPY_D2D        mcdaMemcpyDeviceToDevice
-//#define MEMCPY_H2H        mcdaMemcpyHostToHost
+#define MEMCPY_H2D        mcMemcpyHostToDevice
+#define MEMCPY_D2H        mcMemcpyDeviceToHost
+//#define MEMCPY_D2D        mcMemcpyDeviceToDevice
+//#define MEMCPY_H2H        mcMemcpyHostToHost
 
 
 #else

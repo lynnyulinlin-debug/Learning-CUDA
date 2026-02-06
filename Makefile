@@ -74,7 +74,7 @@ else ifeq ($(PLATFORM),metax)
     # 需要补充的编译/链接选项
     EXTRA_LIBS      := -I$(MACA_ROOT)/include \
                        -L$(MACA_ROOT)/lib \
-                       -lmaca_runtime \
+                       -lmcruntime \
                        -Wl,-rpath,$(MACA_ROOT)/lib
 else
     $(error Unsupported PLATFORM '$(PLATFORM)' (expected: nvidia, iluvatar, moore, metax))
