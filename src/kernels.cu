@@ -1,12 +1,3 @@
-#include <vector>
-#include <cuda_fp16.h>
-#include <cuda_runtime.h>
-#include <type_traits>
-
-#include <cmath>
-#include <limits>
-#include <algorithm>
-#include <cstdlib>
 
 #include "../tester/utils.h"
 
@@ -15,59 +6,59 @@
 // 兼容符号：某些测试/SDK 可能会引用 cudaGetDeviceProperties_v2
 // 注意：在非 NVIDIA 平台可能会与平台库的实现冲突，所以只在 NVIDIA 下提供。
 // ============================================================================
-#if defined(PLATFORM_NVIDIA)
-extern "C" cudaError_t cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int device) {
-  return cudaGetDeviceProperties(prop, device);
-}
-#endif
+// #if defined(PLATFORM_NVIDIA)
+// extern "C" cudaError_t cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int device) {
+//   return cudaGetDeviceProperties(prop, device);
+// }
+// #endif
 
 // ============================================================================
 // runtime mapping (CUDA / Iluvatar)
 // 将所有 runtime 调用统一走这层，便于跨平台替换与定位问题。
 // ============================================================================
-#if defined(PLATFORM_NVIDIA) || defined(PLATFORM_ILUVATAR)
-  #define DEV_MALLOC        cudaMalloc
-  #define DEV_FREE          cudaFree
-  #define DEV_MEMCPY        cudaMemcpy
-  #define DEV_MEMSET        cudaMemset
-  #define DEV_DEVICE_SYNC   cudaDeviceSynchronize
-  #define DEV_GET_LAST_ERR  cudaGetLastError
-  #define DEV_ERR_STR       cudaGetErrorString
+// #if defined(PLATFORM_NVIDIA) || defined(PLATFORM_ILUVATAR)
+//   #define DEV_MALLOC        cudaMalloc
+//   #define DEV_FREE          cudaFree
+//   #define DEV_MEMCPY        cudaMemcpy
+//   #define DEV_MEMSET        cudaMemset
+//   #define DEV_DEVICE_SYNC   cudaDeviceSynchronize
+//   #define DEV_GET_LAST_ERR  cudaGetLastError
+//   #define DEV_ERR_STR       cudaGetErrorString
 
-  #define MEMCPY_H2D        cudaMemcpyHostToDevice
-  #define MEMCPY_D2H        cudaMemcpyDeviceToHost
-  #define MEMCPY_D2D        cudaMemcpyDeviceToDevice
-#else
-  #error "This kernels.cu is only for NVIDIA/ILUVATAR in this project layout."
-#endif
+//   #define MEMCPY_H2D        cudaMemcpyHostToDevice
+//   #define MEMCPY_D2H        cudaMemcpyDeviceToHost
+//   #define MEMCPY_D2D        cudaMemcpyDeviceToDevice
+// #else
+//   #error "This kernels.cu is only for NVIDIA/ILUVATAR in this project layout."
+// #endif
 
-// kernel launch check：先抓 launch error，再 sync（便于区分 launch vs runtime）
-#define KERNEL_LAUNCH_CHECK()                                         \
-  do {                                                                \
-    auto e = DEV_GET_LAST_ERR();                                      \
-    if (e != cudaSuccess) {                                           \
-      std::cerr << "Kernel launch error: " << DEV_ERR_STR(e) << "\n"; \
-      exit(EXIT_FAILURE);                                             \
-    }                                                                 \
-    RUNTIME_CHECK(DEV_DEVICE_SYNC());                                 \
-  } while (0)
+// // kernel launch check：先抓 launch error，再 sync（便于区分 launch vs runtime）
+// #define KERNEL_LAUNCH_CHECK()                                         \
+//   do {                                                                \
+//     auto e = DEV_GET_LAST_ERR();                                      \
+//     if (e != cudaSuccess) {                                           \
+//       std::cerr << "Kernel launch error: " << DEV_ERR_STR(e) << "\n"; \
+//       exit(EXIT_FAILURE);                                             \
+//     }                                                                 \
+//     RUNTIME_CHECK(DEV_DEVICE_SYNC());                                 \
+//   } while (0)
 
 
 // ============================================================================
 // device helpers
 // 注意：flashAttention 为了数值一致性，统一先转 float 再算，再转回。
 // ============================================================================
-template <typename T>
-__device__ __forceinline__ float to_float_dev(T x) {
-  if constexpr (std::is_same_v<T, half>) return __half2float(x);
-  else return (float)x;
-}
+// template <typename T>
+// __device__ __forceinline__ float to_float_dev(T x) {
+//   if constexpr (std::is_same_v<T, half>) return __half2float(x);
+//   else return (float)x;
+// }
 
-template <typename T>
-__device__ __forceinline__ T from_float_dev(float x) {
-  if constexpr (std::is_same_v<T, half>) return __float2half(x);
-  else return (T)x;
-}
+// template <typename T>
+// __device__ __forceinline__ T from_float_dev(float x) {
+//   if constexpr (std::is_same_v<T, half>) return __float2half(x);
+//   else return (T)x;
+// }
 
 /**
  * @brief Computes the trace of a matrix.
@@ -90,6 +81,12 @@ __device__ __forceinline__ T from_float_dev(float x) {
 //
 // 注意：本项目只显式实例化 trace<int>, trace<float>，atomicAdd 对应可用。
 // ============================================================================
+template <typename T>
+__device__ __forceinline__ T from_float_dev(float x) {
+  if constexpr (std::is_same_v<T, half>) return __float2half(x);
+  else return (T)x;
+}
+
  template <typename T>
 __global__ void trace_kernel(const T* __restrict__ in, size_t rows, size_t cols, T* __restrict__ out) {
   const size_t n = (rows < cols) ? rows : cols;
