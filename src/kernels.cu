@@ -2,64 +2,6 @@
 #include "../tester/utils.h"
 
 
-// ============================================================================
-// 兼容符号：某些测试/SDK 可能会引用 cudaGetDeviceProperties_v2
-// 注意：在非 NVIDIA 平台可能会与平台库的实现冲突，所以只在 NVIDIA 下提供。
-// ============================================================================
-// #if defined(PLATFORM_NVIDIA)
-// extern "C" cudaError_t cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int device) {
-//   return cudaGetDeviceProperties(prop, device);
-// }
-// #endif
-
-// ============================================================================
-// runtime mapping (CUDA / Iluvatar)
-// 将所有 runtime 调用统一走这层，便于跨平台替换与定位问题。
-// ============================================================================
-// #if defined(PLATFORM_NVIDIA) || defined(PLATFORM_ILUVATAR)
-//   #define DEV_MALLOC        cudaMalloc
-//   #define DEV_FREE          cudaFree
-//   #define DEV_MEMCPY        cudaMemcpy
-//   #define DEV_MEMSET        cudaMemset
-//   #define DEV_DEVICE_SYNC   cudaDeviceSynchronize
-//   #define DEV_GET_LAST_ERR  cudaGetLastError
-//   #define DEV_ERR_STR       cudaGetErrorString
-
-//   #define MEMCPY_H2D        cudaMemcpyHostToDevice
-//   #define MEMCPY_D2H        cudaMemcpyDeviceToHost
-//   #define MEMCPY_D2D        cudaMemcpyDeviceToDevice
-// #else
-//   #error "This kernels.cu is only for NVIDIA/ILUVATAR in this project layout."
-// #endif
-
-// // kernel launch check：先抓 launch error，再 sync（便于区分 launch vs runtime）
-// #define KERNEL_LAUNCH_CHECK()                                         \
-//   do {                                                                \
-//     auto e = DEV_GET_LAST_ERR();                                      \
-//     if (e != cudaSuccess) {                                           \
-//       std::cerr << "Kernel launch error: " << DEV_ERR_STR(e) << "\n"; \
-//       exit(EXIT_FAILURE);                                             \
-//     }                                                                 \
-//     RUNTIME_CHECK(DEV_DEVICE_SYNC());                                 \
-//   } while (0)
-
-
-// ============================================================================
-// device helpers
-// 注意：flashAttention 为了数值一致性，统一先转 float 再算，再转回。
-// ============================================================================
-// template <typename T>
-// __device__ __forceinline__ float to_float_dev(T x) {
-//   if constexpr (std::is_same_v<T, half>) return __half2float(x);
-//   else return (float)x;
-// }
-
-// template <typename T>
-// __device__ __forceinline__ T from_float_dev(float x) {
-//   if constexpr (std::is_same_v<T, half>) return __float2half(x);
-//   else return (T)x;
-// }
-
 /**
  * @brief Computes the trace of a matrix.
  *
@@ -81,11 +23,7 @@
 //
 // 注意：本项目只显式实例化 trace<int>, trace<float>，atomicAdd 对应可用。
 // ============================================================================
-template <typename T>
-__device__ __forceinline__ T from_float_dev(float x) {
-  if constexpr (std::is_same_v<T, half>) return __float2half(x);
-  else return (T)x;
-}
+
 
  template <typename T>
 __global__ void trace_kernel(const T* __restrict__ in, size_t rows, size_t cols, T* __restrict__ out) {
@@ -125,11 +63,11 @@ T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
 
   // device malloc
   T *d_in = nullptr, *d_out = nullptr;
-  RUNTIME_CHECK(DEV_MALLOC(&d_in, n_elem * sizeof(T)));
-  RUNTIME_CHECK(DEV_MALLOC(&d_out, sizeof(T)));
+  RUNTIME_CHECK(RUNTIME_MALLOC(&d_in, n_elem * sizeof(T)));
+  RUNTIME_CHECK(RUNTIME_MALLOC(&d_out, sizeof(T)));
 
-  RUNTIME_CHECK(DEV_MEMCPY(d_in, h_input.data(), n_elem * sizeof(T), MEMCPY_H2D));
-  RUNTIME_CHECK(DEV_MEMSET(d_out, 0, sizeof(T)));// clear device scalar; 
+  RUNTIME_CHECK(RUNTIME_MEMCPY(d_in, h_input.data(), n_elem * sizeof(T), MEMCPY_H2D));
+  RUNTIME_CHECK(RUNTIME_MEMSET(d_out, 0, sizeof(T)));// clear device scalar; 
 
   // blocks adaptive
   const int threads = 256; // a common, portable block size 
@@ -143,10 +81,10 @@ T trace(const std::vector<T>& h_input, size_t rows, size_t cols) {
   KERNEL_LAUNCH_CHECK();
 
   T h_out;
-  RUNTIME_CHECK(DEV_MEMCPY(&h_out, d_out, sizeof(T), MEMCPY_D2H));
+  RUNTIME_CHECK(RUNTIME_MEMCPY(&h_out, d_out, sizeof(T), MEMCPY_D2H));
 
-  RUNTIME_CHECK(DEV_FREE(d_in));
-  RUNTIME_CHECK(DEV_FREE(d_out));
+  RUNTIME_CHECK(RUNTIME_FREE(d_in));
+  RUNTIME_CHECK(RUNTIME_FREE(d_out));
   return h_out;
 }
 
@@ -296,14 +234,14 @@ void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,
   h_o.resize(o_sz);
 
   T *d_q=nullptr, *d_k=nullptr, *d_v=nullptr, *d_o=nullptr;
-  RUNTIME_CHECK(DEV_MALLOC(&d_q, q_sz * sizeof(T)));
-  RUNTIME_CHECK(DEV_MALLOC(&d_k, k_sz * sizeof(T)));
-  RUNTIME_CHECK(DEV_MALLOC(&d_v, v_sz * sizeof(T)));
-  RUNTIME_CHECK(DEV_MALLOC(&d_o, o_sz * sizeof(T)));
+  RUNTIME_CHECK(RUNTIME_MALLOC(&d_q, q_sz * sizeof(T)));
+  RUNTIME_CHECK(RUNTIME_MALLOC(&d_k, k_sz * sizeof(T)));
+  RUNTIME_CHECK(RUNTIME_MALLOC(&d_v, v_sz * sizeof(T)));
+  RUNTIME_CHECK(RUNTIME_MALLOC(&d_o, o_sz * sizeof(T)));
 
-  RUNTIME_CHECK(DEV_MEMCPY(d_q, h_q.data(), q_sz * sizeof(T), MEMCPY_H2D));
-  RUNTIME_CHECK(DEV_MEMCPY(d_k, h_k.data(), k_sz * sizeof(T), MEMCPY_H2D));
-  RUNTIME_CHECK(DEV_MEMCPY(d_v, h_v.data(), v_sz * sizeof(T), MEMCPY_H2D));
+  RUNTIME_CHECK(RUNTIME_MEMCPY(d_q, h_q.data(), q_sz * sizeof(T), MEMCPY_H2D));
+  RUNTIME_CHECK(RUNTIME_MEMCPY(d_k, h_k.data(), k_sz * sizeof(T), MEMCPY_H2D));
+  RUNTIME_CHECK(RUNTIME_MEMCPY(d_v, h_v.data(), v_sz * sizeof(T), MEMCPY_H2D));
 
   // grid: (B, Tt, QH), block: (D)
   dim3 grid((unsigned)B, (unsigned)Tt, (unsigned)QH);
@@ -311,14 +249,14 @@ void flashAttention(const std::vector<T>& h_q, const std::vector<T>& h_k,
 
   // 若 D > 1024 需要拆分，这里假设测试用例 head_dim <= 256/512/1024
   flashattn_kernel<T><<<grid, block>>>(d_q, d_k, d_v, d_o, B, Tt, Ss, QH, KVH, D, is_causal);
-  RUNTIME_CHECK(DEV_DEVICE_SYNC());
+  RUNTIME_CHECK(RUNTIME_DEVICE_SYNC());
 
-  RUNTIME_CHECK(DEV_MEMCPY(h_o.data(), d_o, o_sz * sizeof(T), MEMCPY_D2H));
+  RUNTIME_CHECK(RUNTIME_MEMCPY(h_o.data(), d_o, o_sz * sizeof(T), MEMCPY_D2H));
 
-  RUNTIME_CHECK(DEV_FREE(d_q));
-  RUNTIME_CHECK(DEV_FREE(d_k));
-  RUNTIME_CHECK(DEV_FREE(d_v));
-  RUNTIME_CHECK(DEV_FREE(d_o));
+  RUNTIME_CHECK(RUNTIME_FREE(d_q));
+  RUNTIME_CHECK(RUNTIME_FREE(d_k));
+  RUNTIME_CHECK(RUNTIME_FREE(d_v));
+  RUNTIME_CHECK(RUNTIME_FREE(d_o));
      
 }
 

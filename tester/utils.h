@@ -14,34 +14,34 @@
 #define RUNTIME_ERR_TYPE cudaError_t
 #define RUNTIME_SUCCESS_CODE cudaSuccess
 #define RUNTIME_GET_ERROR_STR cudaGetErrorString
+#define RUNTIME_GET_LAST_ERR  cudaGetLastError
 
-  #define DEV_MALLOC        cudaMalloc
-  #define DEV_FREE          cudaFree
-  #define DEV_MEMCPY        cudaMemcpy
-  #define DEV_MEMSET        cudaMemset
-  #define DEV_DEVICE_SYNC   cudaDeviceSynchronize
-  #define RUNTIME_GET_LAST_ERR  cudaGetLastError
+#define RUNTIME_MALLOC        cudaMalloc
+#define RUNTIME_FREE          cudaFree
+#define RUNTIME_MEMCPY        cudaMemcpy
+#define RUNTIME_MEMSET        cudaMemset
 
+#define RUNTIME_DEVICE_SYNC   cudaDeviceSynchronize
 
-  #define MEMCPY_H2D        cudaMemcpyHostToDevice
-  #define MEMCPY_D2H        cudaMemcpyDeviceToHost
-  #define MEMCPY_D2D        cudaMemcpyDeviceToDevice
+#define MEMCPY_H2D        cudaMemcpyHostToDevice
+#define MEMCPY_D2H        cudaMemcpyDeviceToHost
+//#define MEMCPY_D2D        cudaMemcpyDeviceToDevice
   
 #if defined(PLATFORM_NVIDIA)
-extern "C" cudaError_t cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int device) {
+extern "C" RUNTIME_ERR_TYPE cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int device) {
   return cudaGetDeviceProperties(prop, device);
 }
 #endif
 
-// kernel launch check：先抓 launch error，再 sync（便于区分 launch vs runtime）
-#define KERNEL_LAUNCH_CHECK()                                         \
-  do {                                                                \
-    auto e = RUNTIME_GET_LAST_ERR();                                      \
-    if (e != RUNTIME_SUCCESS_CODE) {                                           \
-      std::cerr << "Kernel launch error: " << RUNTIME_GET_ERROR_STR(e) << "\n"; \
-      exit(EXIT_FAILURE);                                             \
-    }                                                                 \
-    RUNTIME_CHECK(DEV_DEVICE_SYNC());                                 \
+#define KERNEL_LAUNCH_CHECK()                                                 \
+  do {                                                                        \
+    RUNTIME_ERR_TYPE err = RUNTIME_GET_LAST_ERR();                            \
+    if (err != RUNTIME_SUCCESS_CODE) {                                        \
+      std::cerr << "Kernel launch error at " << __FILE__ << ":" << __LINE__   \
+                << " - " << RUNTIME_GET_ERROR_STR(err) << "\n";               \
+      exit(EXIT_FAILURE);                                                     \
+    }                                                                         \
+    RUNTIME_CHECK(RUNTIME_DEVICE_SYNC());                                     \
   } while (0)
 
 #elif defined(PLATFORM_MOORE)
@@ -70,8 +70,18 @@ extern "C" cudaError_t cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int devi
     }                                                                          \
   } while (0)
 
+// ============================================================================
+// device helpers
+// 注意：flashAttention 为了数值一致性，统一先转 float 再算，再转回。
+// ============================================================================
 template <typename T>
 __device__ __forceinline__ float to_float_dev(T x) {
   if constexpr (std::is_same_v<T, half>) return __half2float(x);
   else return (float)x;
+}
+
+template <typename T>
+__device__ __forceinline__ T from_float_dev(float x) {
+  if constexpr (std::is_same_v<T, half>) return __float2half(x);
+  else return (T)x;
 }
