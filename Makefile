@@ -34,7 +34,6 @@ else ifeq ($(PLATFORM),iluvatar)
 	PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
 	INC := -I$(COREX_ROOT)/include
 
-
 # KEY: to make clang++ generate device core accoring to ivcore
 	# fat device image
 	ILUVATAR_ARCHES ?= ivcore10 ivcore11
@@ -62,10 +61,21 @@ else ifeq ($(PLATFORM),moore)
                        -L/usr/lib/gcc/x86_64-linux-gnu/11/ \
                        -Xlinker -rpath -Xlinker $(MUSA_ROOT)/lib
 else ifeq ($(PLATFORM),metax)
-    CC                  := mxcc
-    TEST_OBJ            := tester/tester_metax.o
-	STUDENT_SUFFIX  := maca
-	PLATFORM_DEFINE := -DPLATFORM_METAX
+#     CC                  := mxcc
+#     TEST_OBJ            := tester/tester_metax.o
+# 	STUDENT_SUFFIX  := maca
+# 	PLATFORM_DEFINE := -DPLATFORM_METAX
+    MACA_ROOT       ?= /opt/maca
+    CC              := mxcc
+    CFLAGS          := -std=c++17 -O3
+    TEST_OBJ        := tester/tester_metax.o
+    STUDENT_SUFFIX  := maca
+    PLATFORM_DEFINE := -DPLATFORM_METAX
+    # 需要补充的编译/链接选项
+    EXTRA_LIBS      := -I$(MACA_ROOT)/include \
+                       -L$(MACA_ROOT)/lib \
+                       -lmaca_runtime \
+                       -Wl,-rpath,$(MACA_ROOT)/lib
 else
     $(error Unsupported PLATFORM '$(PLATFORM)' (expected: nvidia, iluvatar, moore, metax))
 endif
