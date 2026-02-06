@@ -40,19 +40,19 @@ extern "C" RUNTIME_ERR_TYPE cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int
 #define RUNTIME_ERR_TYPE musaError_t
 #define RUNTIME_SUCCESS_CODE musaSuccess
 #define RUNTIME_GET_ERROR_STR musaGetErrorString
-#define RUNTIME_GET_LAST_ERR  mudaGetLastError
+#define RUNTIME_GET_LAST_ERR  musaGetLastError
 
-#define RUNTIME_MALLOC        mudaMalloc
-#define RUNTIME_FREE          mudaFree
-#define RUNTIME_MEMCPY        mudaMemcpy
-#define RUNTIME_MEMSET        mudaMemset
+#define RUNTIME_MALLOC        musaMalloc
+#define RUNTIME_FREE          musaFree
+#define RUNTIME_MEMCPY        musaMemcpy
+#define RUNTIME_MEMSET        musaMemset
 
-#define RUNTIME_DEVICE_SYNC   mudaDeviceSynchronize
+#define RUNTIME_DEVICE_SYNC   musaDeviceSynchronize
 
-#define MEMCPY_H2D        mudaMemcpyHostToDevice
-#define MEMCPY_D2H        mudaMemcpyDeviceToHost
-//#define MEMCPY_D2D        mudaMemcpyDeviceToDevice
-//#define MEMCPY_H2H        mudaMemcpyHostToHost
+#define MEMCPY_H2D        musaMemcpyHostToDevice
+#define MEMCPY_D2H        musaMemcpyDeviceToHost
+//#define MEMCPY_D2D        musaMemcpyDeviceToDevice
+//#define MEMCPY_H2H        musaMemcpyHostToHost
 
 #elif defined(PLATFORM_METAX)
 #include <mcr/mc_runtime.h>

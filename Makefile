@@ -28,7 +28,6 @@ ifeq ($(PLATFORM),nvidia)
 	EXTRA_LIBS := -L$(CUDA_HOME)/lib64 -lcudart -Xlinker -rpath -Xlinker $(CUDA_HOME)/lib64
 else ifeq ($(PLATFORM),iluvatar)
 	COREX_ROOT ?= /usr/local/corex
-	ILUVATAR_ARCH ?= ivcore10
 	CC := $(COREX_ROOT)/bin/clang++
 	TEST_OBJ := tester/tester_iluvatar.o
 	PLATFORM_DEFINE := -DPLATFORM_ILUVATAR
@@ -36,7 +35,7 @@ else ifeq ($(PLATFORM),iluvatar)
 
 # KEY: to make clang++ generate device core accoring to ivcore
 	# fat device image
-	ILUVATAR_ARCHES ?= ivcore10 ivcore11
+	ILUVATAR_ARCHES ?= ivcore10 ivcore11 
 	IVCORE_ARCH_FLAGS := $(foreach a,$(ILUVATAR_ARCHES),--cuda-gpu-arch=$(a))
 	# compile .cu
 	IVCORE_CFLAGS := -std=c++17 -O3 -fPIC \
@@ -45,21 +44,30 @@ else ifeq ($(PLATFORM),iluvatar)
 	        --cuda-path=$(COREX_ROOT) \
 	        $(INC) $(PLATFORM_DEFINE)
 	IVCORE_LDFLAGS := --cuda-path=$(COREX_ROOT)
-# for link use
+# link configuration
 	EXTRA_LIBS := -L$(COREX_ROOT)/lib64 -lcudart -Wl,-rpath,$(COREX_ROOT)/lib64
 else ifeq ($(PLATFORM),moore)
 	MUSA_ROOT       ?= /usr/local/musa
-    CC              := mcc
+    CC              := $(MUSA_ROOT)/bin/mcc
 	CFLAGS          := -std=c++11 -O3
     TEST_OBJ        := tester/tester_moore.o
 	STUDENT_SUFFIX  := mu
 	PLATFORM_DEFINE := -DPLATFORM_MOORE
-#	EXTRA_LIBS              := -I/usr/local/musa/include -L/usr/lib/gcc/x86_64-linux-gnu/11/ -L/usr/local/musa/lib -lmusart
-# 对齐 NVIDIA 风格：include 路径、库路径、运行时库、rpath
-    EXTRA_LIBS      := -I$(MUSA_ROOT)/include \
-                       -L$(MUSA_ROOT)/lib -lmusart \
-                       -L/usr/lib/gcc/x86_64-linux-gnu/11/ \
-                       -Xlinker -rpath -Xlinker $(MUSA_ROOT)/lib
+# include .h (musa and stdlib)（
+	INC             := -I$(MUSA_ROOT)/include \
+	                   -I/usr/include/c++/11 \
+	                   -I/usr/include/x86_64-linux-gnu/c++/11
+# link configuration
+# - MUSA runtime lib (musart)
+# - GCC 11 std path
+# - rpath : make sure: find the ddl
+	EXTRA_LIBS      := $(INC) \
+	                   -L$(MUSA_ROOT)/lib \
+	                   -lmusart \
+	                   -L/usr/lib/gcc/x86_64-linux-gnu/11/ \
+	                   -Wl,-rpath,$(MUSA_ROOT)/lib
+
+
 else ifeq ($(PLATFORM),metax)
 #     CC                  := mxcc
 #     TEST_OBJ            := tester/tester_metax.o
@@ -71,7 +79,7 @@ else ifeq ($(PLATFORM),metax)
     TEST_OBJ        := tester/tester_metax.o
     STUDENT_SUFFIX  := maca
     PLATFORM_DEFINE := -DPLATFORM_METAX
-    # 需要补充的编译/链接选项
+# link configuration
     EXTRA_LIBS      := -I$(MACA_ROOT)/include \
                        -L$(MACA_ROOT)/lib \
                        -lmcruntime \
