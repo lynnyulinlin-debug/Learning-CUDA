@@ -26,6 +26,7 @@
 #define MEMCPY_H2D        cudaMemcpyHostToDevice
 #define MEMCPY_D2H        cudaMemcpyDeviceToHost
 //#define MEMCPY_D2D        cudaMemcpyDeviceToDevice
+//#define MEMCPY_H2H        cudaMemcpyHostToHost
   
 #if defined(PLATFORM_NVIDIA)
 extern "C" RUNTIME_ERR_TYPE cudaGetDeviceProperties_v2(cudaDeviceProp* prop, int device) {
