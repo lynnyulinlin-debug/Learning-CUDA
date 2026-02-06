@@ -39,7 +39,6 @@ else ifeq ($(PLATFORM),iluvatar)
 	IVCORE_ARCH_FLAGS := $(foreach a,$(ILUVATAR_ARCHES),--cuda-gpu-arch=$(a))
 	# compile .cu
 	IVCORE_CFLAGS := -std=c++17 -O3 -fPIC \
-	        \
 	        $(IVCORE_ARCH_FLAGS) \
 	        --cuda-path=$(COREX_ROOT) \
 	        $(INC) $(PLATFORM_DEFINE)
@@ -69,10 +68,6 @@ else ifeq ($(PLATFORM),moore)
 
 
 else ifeq ($(PLATFORM),metax)
-#     CC                  := mxcc
-#     TEST_OBJ            := tester/tester_metax.o
-# 	STUDENT_SUFFIX  := maca
-# 	PLATFORM_DEFINE := -DPLATFORM_METAX
     MACA_ROOT       ?= /opt/maca
     CC              := mxcc
     CFLAGS          := -std=c++17 -O3
@@ -152,10 +147,6 @@ ifeq ($(PLATFORM),iluvatar)
 else
 	$(CC) $(CFLAGS) $(PLATFORM_DEFINE) -o $@ $^ $(EXTRA_LIBS)
 endif
-
-#--------------------------------------
-# Prebuilt tester objects(no source, do Not try implicit .cu->.o rules
-#---------------------------------------
 
 # Generate src object: Compile kernels.cu (triggers template instantiation)
 $(STUDENT_OBJ): $(STUDENT_SRC)
